@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Traits\Macroable;
 use Stancl\Tenancy\Contracts\TenancyBootstrapper;
 use Stancl\Tenancy\Contracts\Tenant;
+use Stancl\Tenancy\Exceptions\TenantCouldNotBeIdentifiedById;
 
 class Tenancy
 {
@@ -23,10 +24,29 @@ class Tenancy
     /** @var bool */
     public $initialized = false;
 
-    public function initialize(Tenant $tenant): void
+    /**
+     * Initializes the tenant.
+     * @param Tenant|int|string $tenant
+     * @return void
+     */
+    public function initialize($tenant): void
     {
+        if (! is_object($tenant)) {
+            $tenantId = $tenant;
+            $tenant = $this->find($tenantId);
+
+            if (! $tenant) {
+                throw new TenantCouldNotBeIdentifiedById($tenantId);
+            }
+        }
+
         if ($this->initialized && $this->tenant->getTenantKey() === $tenant->getTenantKey()) {
             return;
+        }
+
+        // TODO: Remove this (so that runForMultiple() is still performant) and make the FS bootstrapper work either way
+        if ($this->initialized) {
+            $this->end();
         }
 
         $this->tenant = $tenant;
@@ -80,7 +100,31 @@ class Tenancy
 
     public function find($id): ?Tenant
     {
-        return $this->model()->find($id);
+        return $this->model()->where($this->model()->getTenantKeyName(), $id)->first();
+    }
+
+    /**
+     * Run a callback in the central context.
+     * Atomic, safely reverts to previous context.
+     *
+     * @param callable $callback
+     * @return mixed
+     */
+    public function central(callable $callback)
+    {
+        $previousTenant = $this->tenant;
+
+        $this->end();
+
+        // This callback will usually not accept arguments, but the previous
+        // Tenant is the only value that can be useful here, so we pass that.
+        $result = $callback($previousTenant);
+
+        if ($previousTenant) {
+            $this->initialize($previousTenant);
+        }
+
+        return $result;
     }
 
     /**
@@ -93,16 +137,22 @@ class Tenancy
      */
     public function runForMultiple($tenants, callable $callback)
     {
+        // Convert null to all tenants
+        $tenants = is_null($tenants) ? $this->model()->cursor() : $tenants;
+
+        // Convert incrementing int ids to strings
+        $tenants = is_int($tenants) ? (string) $tenants : $tenants;
+
         // Wrap string in array
         $tenants = is_string($tenants) ? [$tenants] : $tenants;
 
-        // Use all tenants if $tenants is falsy
+        // Use all tenants if $tenants is falsey
         $tenants = $tenants ?: $this->model()->cursor();
 
         $originalTenant = $this->tenant;
 
         foreach ($tenants as $tenant) {
-            if (is_string($tenant)) {
+            if (! $tenant instanceof Tenant) {
                 $tenant = $this->find($tenant);
             }
 

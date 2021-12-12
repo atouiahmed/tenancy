@@ -117,9 +117,9 @@ class ResourceSyncingTest extends TestCase
 
         // Update user in tenant DB
         $user->update([
+            'name' => 'John Foo', // synced
+            'email' => 'john@foreignhost', // synced
             'role' => 'admin', // unsynced
-            'name' => 'John Foo', // synceed
-            'email' => 'john@foreignhost', // synceed
         ]);
 
         // Assert new values
@@ -579,7 +579,7 @@ class ResourceTenant extends Tenant
 {
     public function users()
     {
-        return $this->belongsToMany(CentralUser::class, 'tenant_users', 'tenant_id', 'global_user_id')
+        return $this->belongsToMany(CentralUser::class, 'tenant_users', 'tenant_id', 'global_user_id', 'id', 'global_id')
             ->using(TenantPivot::class);
     }
 }
@@ -594,7 +594,7 @@ class CentralUser extends Model implements SyncMaster
 
     public function tenants(): BelongsToMany
     {
-        return $this->belongsToMany(ResourceTenant::class, 'tenant_users', 'global_user_id', 'tenant_id')
+        return $this->belongsToMany(ResourceTenant::class, 'tenant_users', 'global_user_id', 'tenant_id', 'global_id')
             ->using(TenantPivot::class);
     }
 
@@ -603,12 +603,7 @@ class CentralUser extends Model implements SyncMaster
         return ResourceUser::class;
     }
 
-    public function getTenantIdColumnInMapTable(): string
-    {
-        return 'tenant_id';
-    }
-
-    public function getGlobalIdentifierKey(): string
+    public function getGlobalIdentifierKey()
     {
         return $this->getAttribute($this->getGlobalIdentifierKeyName());
     }
@@ -641,7 +636,7 @@ class ResourceUser extends Model implements Syncable
     protected $guarded = [];
     public $timestamps = false;
 
-    public function getGlobalIdentifierKey(): string
+    public function getGlobalIdentifierKey()
     {
         return $this->getAttribute($this->getGlobalIdentifierKeyName());
     }

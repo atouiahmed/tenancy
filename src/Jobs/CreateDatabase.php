@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Stancl\Tenancy\Contracts\Tenant;
 use Stancl\Tenancy\Contracts\TenantWithDatabase;
 use Stancl\Tenancy\Database\DatabaseManager;
 use Stancl\Tenancy\Events\CreatingDatabase;
@@ -23,7 +22,7 @@ class CreateDatabase implements ShouldQueue
     /** @var TenantWithDatabase|Model */
     protected $tenant;
 
-    public function __construct(Tenant $tenant)
+    public function __construct(TenantWithDatabase $tenant)
     {
         $this->tenant = $tenant;
     }
@@ -32,12 +31,15 @@ class CreateDatabase implements ShouldQueue
     {
         event(new CreatingDatabase($this->tenant));
 
-        if ($this->tenant->getInternal('create_database') !== false) {
-            $databaseManager->ensureTenantCanBeCreated($this->tenant);
-            $this->tenant->database()->makeCredentials();
-            $this->tenant->database()->manager()->createDatabase($this->tenant);
-
-            event(new DatabaseCreated($this->tenant));
+        // Terminate execution of this job & other jobs in the pipeline
+        if ($this->tenant->getInternal('create_database') === false) {
+            return false;
         }
+
+        $databaseManager->ensureTenantCanBeCreated($this->tenant);
+        $this->tenant->database()->makeCredentials();
+        $this->tenant->database()->manager()->createDatabase($this->tenant);
+
+        event(new DatabaseCreated($this->tenant));
     }
 }

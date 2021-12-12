@@ -17,7 +17,7 @@ use Stancl\Tenancy\Events;
  * @property Carbon $updated_at
  * @property array $data
  *
- * @method TenantCollection all()
+ * @method static TenantCollection all($columns = ['*'])
  */
 class Tenant extends Model implements Contracts\Tenant
 {
@@ -25,7 +25,8 @@ class Tenant extends Model implements Contracts\Tenant
         Concerns\GeneratesIds,
         Concerns\HasDataColumn,
         Concerns\HasInternalKeys,
-        Concerns\TenantRun;
+        Concerns\TenantRun,
+        Concerns\InvalidatesResolverCache;
 
     protected $table = 'tenants';
     protected $primaryKey = 'id';
@@ -36,7 +37,7 @@ class Tenant extends Model implements Contracts\Tenant
         return 'id';
     }
 
-    public function getTenantKey(): ?string
+    public function getTenantKey()
     {
         return $this->getAttribute($this->getTenantKeyName());
     }

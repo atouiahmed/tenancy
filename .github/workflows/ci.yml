@@ -5,9 +5,9 @@ env:
 
 on:
   push:
-    branches: [ 2.x, master ]
+    branches: [ 3.x, 2.x, master ]
   pull_request:
-    branches: [ 2.x, master ]
+    branches: [ 3.x, 2.x, master ]
 
 jobs:
   tests:
@@ -15,15 +15,13 @@ jobs:
 
     strategy:
       matrix:
-        laravel: [
-          "^6.0",
-          "^7.0"
-        ]
-    
+        php: ["7.4", "8.0"]
+        laravel: ["^6.0", "^8.0"]
+
     steps:
     - uses: actions/checkout@v2
     - name: Start docker containers
-      run: docker-compose up -d
+      run: PHP_VERSION=${{ matrix.php }} docker-compose up -d
     - name: Install dependencies
       run: docker-compose exec -T test composer require --no-interaction "laravel/framework:${{ matrix.laravel }}"
     - name: Run tests

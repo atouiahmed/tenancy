@@ -6,7 +6,6 @@ namespace Stancl\Tenancy\Tests;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -51,44 +50,6 @@ class TenantModelTest extends TestCase
     }
 
     /** @test */
-    public function keys_which_dont_have_their_own_column_go_into_data_json_column()
-    {
-        $tenant = Tenant::create([
-            'foo' => 'bar',
-        ]);
-
-        // Test that model works correctly
-        $this->assertSame('bar', $tenant->foo);
-        $this->assertSame(null, $tenant->data);
-
-        // Low level test to assert database structure
-        $this->assertSame(json_encode(['foo' => 'bar']), DB::table('tenants')->where('id', $tenant->id)->first()->data);
-        $this->assertSame(null, DB::table('tenants')->where('id', $tenant->id)->first()->foo ?? null);
-
-        // Model has the correct structure when retrieved
-        $tenant = Tenant::first();
-        $this->assertSame('bar', $tenant->foo);
-        $this->assertSame(null, $tenant->data);
-
-        // Model can be updated
-        $tenant->update([
-            'foo' => 'baz',
-            'abc' => 'xyz',
-        ]);
-
-        $this->assertSame('baz', $tenant->foo);
-        $this->assertSame('xyz', $tenant->abc);
-        $this->assertSame(null, $tenant->data);
-
-        // Model can be retrieved after update & is structure correctly
-        $tenant = Tenant::first();
-
-        $this->assertSame('baz', $tenant->foo);
-        $this->assertSame('xyz', $tenant->abc);
-        $this->assertSame(null, $tenant->data);
-    }
-
-    /** @test */
     public function id_is_generated_when_no_id_is_supplied()
     {
         config(['tenancy.id_generator' => UUIDGenerator::class]);
@@ -105,6 +66,7 @@ class TenantModelTest extends TestCase
     /** @test */
     public function autoincrement_ids_are_supported()
     {
+        Schema::drop('domains');
         Schema::table('tenants', function (Blueprint $table) {
             $table->bigIncrements('id')->change();
         });
@@ -170,12 +132,6 @@ class TenantModelTest extends TestCase
     }
 
     /** @test */
-    public function data_is_never_encoded_or_decoded_twice()
-    {
-        // todo. tests for registerPriorityListener
-    }
-
-    /** @test */
     public function the_model_uses_TenantCollection()
     {
         Tenant::create();
@@ -223,7 +179,7 @@ class AnotherTenant extends Model implements Contracts\Tenant
         return 'id';
     }
 
-    public function getTenantKey(): string
+    public function getTenantKey()
     {
         return $this->getAttribute('id');
     }

@@ -3,6 +3,8 @@ services:
     test:
         build:
             context: .
+            args:
+              PHP_VERSION: ${PHP_VERSION}
         depends_on:
             mysql:
                 condition: service_healthy

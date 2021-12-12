@@ -8,6 +8,7 @@ use Illuminate\Cache\CacheManager;
 use Illuminate\Support\ServiceProvider;
 use Stancl\Tenancy\Bootstrappers\FilesystemTenancyBootstrapper;
 use Stancl\Tenancy\Contracts\Tenant;
+use Stancl\Tenancy\Resolvers\DomainTenantResolver;
 
 class TenancyServiceProvider extends ServiceProvider
 {
@@ -39,16 +40,26 @@ class TenancyServiceProvider extends ServiceProvider
             return $app[Tenancy::class]->tenant;
         });
 
+        $this->app->bind(Domain::class, function () {
+            return DomainTenantResolver::$currentDomain;
+        });
+
         // Make sure bootstrappers are stateful (singletons).
         foreach ($this->app['config']['tenancy.bootstrappers'] ?? [] as $bootstrapper) {
+            if (method_exists($bootstrapper, '__constructStatic')) {
+                $bootstrapper::__constructStatic($this->app);
+            }
+
             $this->app->singleton($bootstrapper);
         }
 
         // Bind the class in the tenancy.id_generator config to the UniqueIdentifierGenerator abstract.
-        $this->app->bind(Contracts\UniqueIdentifierGenerator::class, $this->app['config']['tenancy.id_generator']);
+        if (! is_null($this->app['config']['tenancy.id_generator'])) {
+            $this->app->bind(Contracts\UniqueIdentifierGenerator::class, $this->app['config']['tenancy.id_generator']);
+        }
 
         $this->app->singleton(Commands\Migrate::class, function ($app) {
-            return new Commands\Migrate($app['migrator']);
+            return new Commands\Migrate($app['migrator'], $app['events']);
         });
         $this->app->singleton(Commands\Rollback::class, function ($app) {
             return new Commands\Rollback($app['migrator']);
@@ -71,6 +82,7 @@ class TenancyServiceProvider extends ServiceProvider
     {
         $this->commands([
             Commands\Run::class,
+            Commands\Link::class,
             Commands\Seed::class,
             Commands\Install::class,
             Commands\Migrate::class,
@@ -99,7 +111,9 @@ class TenancyServiceProvider extends ServiceProvider
             __DIR__ . '/../assets/TenancyServiceProvider.stub.php' => app_path('Providers/TenancyServiceProvider.php'),
         ], 'providers');
 
-        $this->loadRoutesFrom(__DIR__ . '/../assets/routes.php');
+        if (config('tenancy.routes', true)) {
+            $this->loadRoutesFrom(__DIR__ . '/../assets/routes.php');
+        }
 
         $this->app->singleton('globalUrl', function ($app) {
             if ($app->bound(FilesystemTenancyBootstrapper::class)) {

@@ -8,20 +8,23 @@ use Closure;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as Router;
 use Stancl\Tenancy\Contracts\Feature;
-use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
+use Stancl\Tenancy\Middleware;
 use Stancl\Tenancy\Tenancy;
 
 class UniversalRoutes implements Feature
 {
+    public static $middlewareGroup = 'universal';
+
     public static $identificationMiddlewares = [
-        InitializeTenancyByDomain::class,
+        Middleware\InitializeTenancyByDomain::class,
+        Middleware\InitializeTenancyBySubdomain::class,
     ];
 
     public function bootstrap(Tenancy $tenancy): void
     {
         foreach (static::$identificationMiddlewares as $middleware) {
             $middleware::$onFail = function ($exception, $request, $next) {
-                if (static::routeHasMiddleware($request->route(), 'universal')) {
+                if (static::routeHasMiddleware($request->route(), static::$middlewareGroup)) {
                     return $next($request);
                 }
 

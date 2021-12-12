@@ -31,7 +31,11 @@ class CommandsTest extends TestCase
 
         config(['tenancy.bootstrappers' => [
             DatabaseTenancyBootstrapper::class,
-        ]]);
+        ],
+        'tenancy.filesystem.suffix_base' => 'tenant-',
+        'tenancy.filesystem.root_override.public' => '%storage_path%/app/public/',
+        'tenancy.filesystem.url_override.public' => 'public-%tenant_id%'
+        ]);
 
         Event::listen(TenancyInitialized::class, BootstrapTenancy::class);
         Event::listen(TenancyEnded::class, RevertToCentralContext::class);
@@ -189,5 +193,57 @@ class CommandsTest extends TestCase
         // test that db is wiped
         Artisan::call('tenants:migrate-fresh');
         $this->assertFalse(DB::table('users')->exists());
+    }
+
+    /** @test */
+    public function run_command_with_array_of_tenants_works()
+    {
+        $tenantId1 = Tenant::create()->getTenantKey();
+        $tenantId2 = Tenant::create()->getTenantKey();
+        Artisan::call('tenants:migrate-fresh');
+
+        $this->artisan("tenants:run foo --tenants=$tenantId1 --tenants=$tenantId2 --argument='a=foo' --option='b=bar' --option='c=xyz'")
+            ->expectsOutput('Tenant: ' . $tenantId1)
+            ->expectsOutput('Tenant: ' . $tenantId2);
+    }
+
+    /** @test */
+    public function link_command_works()
+    {
+        $tenantId1 = Tenant::create()->getTenantKey();
+        $tenantId2 = Tenant::create()->getTenantKey();
+        Artisan::call('tenants:link');
+
+        $this->assertDirectoryExists(storage_path("tenant-$tenantId1/app/public"));
+        $this->assertEquals(storage_path("tenant-$tenantId1/app/public/"), readlink(public_path("public-$tenantId1")));
+
+        $this->assertDirectoryExists(storage_path("tenant-$tenantId2/app/public"));
+        $this->assertEquals(storage_path("tenant-$tenantId2/app/public/"), readlink(public_path("public-$tenantId2")));
+
+        Artisan::call('tenants:link', [
+            '--remove' => true,
+        ]);
+
+        $this->assertDirectoryDoesNotExist(public_path("public-$tenantId1"));
+        $this->assertDirectoryDoesNotExist(public_path("public-$tenantId2"));
+    }
+
+    /** @test */
+    public function link_command_with_tenant_specified_works()
+    {
+        $tenant_key = Tenant::create()->getTenantKey();
+        Artisan::call('tenants:link', [
+            '--tenants' => [$tenant_key],
+        ]);
+
+        $this->assertDirectoryExists(storage_path("tenant-$tenant_key/app/public"));
+        $this->assertEquals(storage_path("tenant-$tenant_key/app/public/"), readlink(public_path("public-$tenant_key")));
+
+        Artisan::call('tenants:link', [
+            '--remove' => true,
+            '--tenants' => [$tenant_key],
+        ]);
+
+        $this->assertDirectoryDoesNotExist(public_path("public-$tenant_key"));
     }
 }

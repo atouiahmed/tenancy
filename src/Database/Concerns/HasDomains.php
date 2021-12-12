@@ -7,7 +7,7 @@ namespace Stancl\Tenancy\Database\Concerns;
 use Stancl\Tenancy\Contracts\Domain;
 
 /**
- * @property-read Domain[]\Illuminate\Database\Eloquent\Collection $domains
+ * @property-read Domain[]|\Illuminate\Database\Eloquent\Collection $domains
  */
 trait HasDomains
 {
@@ -19,6 +19,10 @@ trait HasDomains
     public function createDomain($data): Domain
     {
         $class = config('tenancy.domain_model');
+
+        if (! is_array($data)) {
+            $data = ['domain' => $data];
+        }
 
         $domain = (new $class)->fill($data);
         $domain->tenant()->associate($this);

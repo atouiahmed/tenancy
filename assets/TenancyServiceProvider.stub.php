@@ -15,6 +15,9 @@ use Stancl\Tenancy\Middleware;
 
 class TenancyServiceProvider extends ServiceProvider
 {
+    // By default, no namespace is used to support the callable array syntax.
+    public static string $controllerNamespace = '';
+
     public function events()
     {
         return [
@@ -25,6 +28,7 @@ class TenancyServiceProvider extends ServiceProvider
                     Jobs\CreateDatabase::class,
                     Jobs\MigrateDatabase::class,
                     // Jobs\SeedDatabase::class,
+                    Jobs\CreateStorageSymlinks::class,
 
                     // Your own jobs to prepare the tenant.
                     // Provision API keys, create S3 buckets, anything you want!
@@ -41,6 +45,7 @@ class TenancyServiceProvider extends ServiceProvider
             Events\TenantDeleted::class => [
                 JobPipeline::make([
                     Jobs\DeleteDatabase::class,
+                    Jobs\RemoveStorageSymlinks::class,
                 ])->send(function (Events\TenantDeleted $event) {
                     return $event->tenant;
                 })->shouldBeQueued(false), // `false` by default, but you probably want to make this `true` for production.
@@ -78,6 +83,20 @@ class TenancyServiceProvider extends ServiceProvider
             Events\TenancyBootstrapped::class => [],
             Events\RevertingToCentralContext::class => [],
             Events\RevertedToCentralContext::class => [],
+
+            // Resource syncing
+            Events\SyncedResourceSaved::class => [
+                Listeners\UpdateSyncedResource::class,
+            ],
+
+            // Storage symlinks
+            Events\CreatingStorageSymlink::class => [],
+            Events\StorageSymlinkCreated::class => [],
+            Events\RemovingStorageSymlink::class => [],
+            Events\StorageSymlinkRemoved::class => [],
+
+            // Fired only when a synced resource is changed in a different DB than the origin DB (to avoid infinite loops)
+            Events\SyncedResourceChangedInForeignDatabase::class => [],
         ];
     }
 
@@ -97,7 +116,7 @@ class TenancyServiceProvider extends ServiceProvider
     protected function bootEvents()
     {
         foreach ($this->events() as $event => $listeners) {
-            foreach (array_unique($listeners) as $listener) {
+            foreach ($listeners as $listener) {
                 if ($listener instanceof JobPipeline) {
                     $listener = $listener->toListener();
                 }
@@ -110,7 +129,7 @@ class TenancyServiceProvider extends ServiceProvider
     protected function mapRoutes()
     {
         if (file_exists(base_path('routes/tenant.php'))) {
-            Route::namespace('App\Http\Controllers')
+            Route::namespace(static::$controllerNamespace)
                 ->group(base_path('routes/tenant.php'));
         }
     }
@@ -128,7 +147,7 @@ class TenancyServiceProvider extends ServiceProvider
             Middleware\InitializeTenancyByRequestData::class,
         ];
 
-        foreach ($tenancyMiddleware as $middleware) {
+        foreach (array_reverse($tenancyMiddleware) as $middleware) {
             $this->app[\Illuminate\Contracts\Http\Kernel::class]->prependToMiddlewarePriority($middleware);
         }
     }
